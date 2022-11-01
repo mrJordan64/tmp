@@ -1,0 +1,489 @@
+---
+title: "Laboratory 4"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+author:
+  - Diana Rocío Galindo
+  - Jordan
+mainfont: Arial
+output: 
+  pdf_document:
+    number_sections: true
+    latex_engine: xelatex
+    fig_caption: yes
+    keep_tex: yes
+fontsize: 12pt
+geometry: margin=2cm
+header-includes:
+  - \usepackage{pdfpages}
+  - \usepackage{float}
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \usepackage{array}
+  - \usepackage{multirow}
+  - \usepackage{wrapfig}
+  - \usepackage{float}
+  - \usepackage{colortbl}
+  - \usepackage{pdflscape}
+  - \usepackage{tabu}
+  - \usepackage{threeparttable}
+  - \usepackage{threeparttablex}
+  - \usepackage[normalem]{ulem}
+  - \usepackage{makecell}
+  - \usepackage{xcolor}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+set.seed(1234)
+# Required packages
+packages<-c("cleaner","fixedTimeEvents","stringr","kableExtra","purrr","gridExtra","grid","lattice","VGAM","stats4","ggplot2","dplyr", "knitr", "scales")
+
+# Uninstalled packages vector
+ToInstall<-packages[!packages %in% installed.packages()]
+
+# Iteration to download unistalled packages
+for(libs in ToInstall) install.packages(libs)
+
+# Loading packages
+sapply(packages,require,character=TRUE)
+
+```
+# Introduction
+
+This reports presents the results of fitting a non-linear function to data using collections of syntactic dependency trees from different languages. In this case vertices (n) are words as tokens of sentence and edgesare syntactic dependency among them.
+
+$<k^2>$ is defined as the 2nd moment degree of the vertice and $<d>$ as the mean length of its edges. In this exercise, we investigated the scaling of $<d>$ as a function of n.
+
+# Results
+
+
+```{r, echo = FALSE}
+# Based on summary.R retrieving data for in-degree sequences for all languages
+options(scipen = 1, digits = 3)
+filelist<-list.files(path = "./data",pattern = ".*.txt",full.names = T)
+languages<-gsub("_in-degree_sequence.txt","",basename(filelist))
+#languages<-gsub(".txt","",basename(languages))
+data <- map(filelist,read.table) 
+names(data)<-languages
+
+fun_ininumbers<-function(x){c(length(x$V1),
+       max(x$V1),
+       sum(x$V1)/length(x$V1),
+       length(x$V1)/sum(x$V1))}
+
+a<-lapply(data,fun_ininumbers)
+table1<-data.frame(do.call(rbind, a))
+colnames(table1)<-c("N","Maximum degree","M/N","N/M")
+kbl(table1,booktabs = T)%>%
+kable_styling(latex_options = "striped",full_width = F)
+```
+```{r, error= FALSE, include=FALSE}
+options(scipen = 1, digits = 3)
+fun_displaced_poisson<-function(x){M = sum(x)
+N = nrow(x)
+C <- sum(facL(x)) 
+# 1. The minus log-likelihood function for displaced poisson distribution 
+minus_log_likelihood_dispP <- function(lambda) {
+  N*(lambda+log(1-exp(-lambda))) - (M*log(lambda)) + C
+}
+#1. To estimate the parameter of displaced poisson
+ return(tryCatch(summary(
+mle_dispP <-mle(minus_log_likelihood_dispP,
+                # initial value for displaced poisson distribution
+                start = list(lambda = M/N), 
+                method = "L-BFGS-B",
+                lower = c(0.0001))))) # poisson distributions require lambda > 0  
+}
+
+DispPoisson<-lapply(data,fun_displaced_poisson)
+fun_print0<-function(x){return(tryCatch(cbind(names(data[x]),                                               as.numeric(DispPoisson[[x]]@coef[1])),
+                                      error=function(e) "ERROR"))}
+table1<-data.frame(unlist(do.call(rbind,
+                                  lapply(1:length(DispPoisson),fun_print0))))
+colnames(table1)<-c("Language","lambda estimated")
+table1[,2]<-as.double(table1[,2])
+```
+
+
+```{r dispPoissk, message = FALSE, warning = FALSE, include=FALSE}
+options(scipen = 1, digits = 3)
+kbl(table1,booktabs = T)%>%
+kable_styling(latex_options = "striped",full_width = F)
+```
+
+```{r dispGeom, message = FALSE, warning = FALSE, results= 'hide', include=FALSE}
+fun_displaced_geometric<-function(x){ 
+  M = sum(x)
+  N = dim(x)[1]
+  # 2. The minus log-likelihood function for displaced geometric distribution
+  minus_log_likelihood_dispG <- function(q) {(N-M) * log(1-q) - N * log(q)}
+  # 2. To estimate the parameter of displaced geometric
+  return(tryCatch(summary(
+      mle_dispG <-mle(minus_log_likelihood_dispG,
+                      # initial value for displaced geometric distribution
+                      start = list(q = N/M), 
+                      method = "L-BFGS-B",
+                      # q is a probability which must be between 0 and 1
+                      lower = c(0.0001), 
+                      upper = c(0.99998)), error=function(e) "ERROR")))
+                         }
+
+DispGeom<-lapply(data,fun_displaced_geometric)
+fun_print1<-function(x){ return(tryCatch(cbind(names(data[x]),
+                          as.numeric(DispGeom[[x]]@coef[1]),
+                          DispGeom[[x]]@coef[2]), 
+                          error=function(e) "ERROR"))}
+table2<-data.frame(unlist(do.call(rbind,
+                                  lapply(1:length(DispGeom),fun_print1))))
+colnames(table2)<-c("Language","q estimated","std_dev")
+table2[,2:3]<-sapply(table2[,2:3],as.double)
+```
+
+```{r dispGeomk, message = FALSE, warning = FALSE,echo=FALSE, include=FALSE}
+options(scipen = 1, digits = 3)
+kbl(table2,booktabs = T)%>%
+kable_styling(latex_options = "striped",full_width = F)
+```
+```{r ZetaGamma2, message = FALSE, warning = FALSE, results='hide', include=FALSE}
+# For zeta gamma 2 directly calculating -2L
+
+fun_zetagamma2<-function(x){ (4*sum(log(x)) + nrow(x)*(log(pi^2/6)))}
+
+zetagamma2<-lapply(data,fun_zetagamma2)
+fun_print2<-function(x){ return(tryCatch(cbind(names(data[x]),
+                                               zetagamma2), 
+                                         error=function(e) "ERROR"))}
+table3<-data.frame(unlist(do.call(rbind, zetagamma2)))
+colnames(table3)<-c("-2L")
+table3[,1]<-as.double(table3[,1])
+```
+
+```{r Zeta, message = FALSE, warning = FALSE,results='hide', include=FALSE}
+fun_Zeta<-function(x){
+  # 4. The minus log-likelihood function for zeta distribution 
+  minus_log_likelihood_zeta <- function(gamma) {
+    nrow(x) * log(zeta(gamma)) + gamma * sum(log(x))}
+    # 4. To estimate the parameter of zeta
+      return(tryCatch(summary(
+        mle(minus_log_likelihood_zeta,
+            # initial value for zeta distributions
+            start = list(gamma = 2),
+            method = "L-BFGS-B",
+            # zeta distributions require gamma > 1
+            lower = c(1.0000001)))))
+    }
+Zeta<-lapply(data,fun_Zeta)
+fun_print4<-function(x){ return(tryCatch(cbind(names(data[x]),
+                                               Zeta[[x]]@coef[1]),
+                                         error=function(e) "ERROR"))}
+table4<-data.frame(unlist(do.call(rbind, lapply(1:length(Zeta),fun_print4))))
+colnames(table4)<-c("Language","gamma estimated")
+table4[,2]<-as.double(table4[,2])
+
+```
+
+```{r Zetak, message = FALSE, warning = FALSE, include=FALSE}
+options(scipen = 1, digits = 3)
+kbl(table4,booktabs = T)%>%
+kable_styling(latex_options = "striped",full_width = F)
+```
+
+```{r RTZeta, message = FALSE, warning = FALSE,results='hide', include=FALSE}
+fun_RTzeta<-function(x){ 
+  # 5. The minus log-likelihood function for Right-truncated zeta 
+  # distribution defining the function to calculate Harmonic mean
+  H <- function(n, alpha) {sum((1:n) ^ (-alpha))} 
+  minus_log_likelihood_zeta_trunc <- function(gamma, k_max)
+    {nrow(x) * log(H(k_max,gamma)) + gamma * sum(log(x))}
+  # 5. To estimate the parameter of right truncated zeta
+  return(tryCatch(summary(mle(minus_log_likelihood_zeta_trunc,
+  # initial values for right-truncated zeta distributions
+  start = list(k_max = max(x), gamma = 2), 
+  method = "L-BFGS-B",
+  # r-t zeta distributions require gamma > 1 and k_max >= max degree
+  lower = list(k_max = (max(x)-.00001), gamma = 1.0000001)))))
+                         }
+
+RTZeta<-lapply(data,fun_RTzeta)
+fun_print5<-function(x){ return(tryCatch(cbind(names(data[x]),
+                                              RTZeta[[x]]@coef[1],
+                                              RTZeta[[x]]@coef[2]),
+                                         error=function(e) "ERROR"))}
+table5<-data.frame(unlist(do.call(rbind,lapply(1:length(Zeta),fun_print5))))
+colnames(table5)<-c("Language","gamma estimated","K max")
+table5[,2:3]<-sapply(table5[,2:3],as.double)
+
+
+```
+
+```{r RTZetak, message = FALSE, warning = FALSE, echo=FALSE, include=FALSE}
+options(scipen = 1, digits = 3)
+kbl(table5,booktabs = T)%>%
+kable_styling(latex_options = "striped",full_width = F)
+```
+
+```{r,warning=FALSE, warning=FALSE, include=FALSE}
+N<-lapply(data,nrow)
+#m2logL + 2*K*N/(N-K-1)
+
+fun_getm2logL<-function(x){return(tryCatch(
+as.numeric(attributes(x)[3])                             ))}
+dP_m2logL<-lapply(DispPoisson,fun_getm2logL)
+dG_m2logL<-lapply(DispGeom,fun_getm2logL)
+zetagamma2
+z_m2logL<-lapply(Zeta,fun_getm2logL)
+RTz_m2logL<-lapply(RTZeta,fun_getm2logL)
+
+AICdP<-as.data.frame(cbind(unlist(N),unlist(dP_m2logL)))
+names(AICdP)<-c("N","dP_m2logL")
+AICdP$AICdP<-AICdP[,2] + (2*AICdP[,1]/(AICdP[,1]-2)) # K = 1 | AIC = m2logL + 2*N/(N-2)
+
+
+AICdG<-as.data.frame(cbind(unlist(N),unlist(dG_m2logL)))
+names(AICdG)<-c("N","dG_m2logL")
+AICdG$AICdG<-AICdG[,2] + (2*AICdG[,1]/(AICdG[,1]-2)) # K = 1 | AIC = m2logL + 2*N/(N-2)
+
+
+AICzg2<-as.data.frame(cbind(unlist(N),unlist(zetagamma2)))
+names(AICzg2)<-c("N","zetagamma2")
+AICzg2$AICzg2<-AICzg2[,2]  # K = 0 |AIC = m2logL 
+
+
+
+AICz<-as.data.frame(cbind(unlist(N),unlist(z_m2logL)))
+names(AICz)<-c("N","z_m2logL")
+AICz$AICz<-AICz[,2] + 2*AICz[,1]/(AICz[,1]-2) # K = 1 | AIC = m2logL + 2*N/(N-2)
+AICz
+
+
+AICRTz<-as.data.frame(cbind(unlist(N),unlist(RTz_m2logL)))
+names(AICRTz)<-c("N","RTz_m2logL")
+AICRTz$AICRTz<-AICRTz[,2] + 4*AICRTz[,1]/(AICRTz[,1]-3) # K = 1 | AIC = m2logL + 4*N/(N-3)
+AICRTz
+
+
+AICs<-data.frame(cbind(unlist(names(data)),AICdP$AICdP,AICdG$AICdG,AICzg2$AICzg2,AICz$AICz,AICRTz$AICRTz))
+colnames(AICs)<-c("Language","AIC dPoisson","AIC dGeomtric ","AIC Zeta gamma = 2","AIC zeta","AIC Right Truncated z")
+AICs[,2:6]<-sapply(AICs[,2:6], as.double)
+str(AICs)
+
+```
+
+
+From the Histograms of the language data, shown in a log-log scale, we can see that lower degrees are much more frequent than higher degrees, with many words have in-degree equal to 1 or 2. In general, it can be concluded that all the languages count with a higher number of nodes with low degree. The languages with a greater maximum degree are English, Czech and Chinese, on the opposite, Catalan, hungarian and Italian present lower values, meaning that the maximum number of incoming connections of a word in the dependency tree bank is considerable low respecting the other languages. 
+
+
+```{r,fig.align = "center", echo=FALSE}
+fun_hist<-function(i){tmp_name=names(data[i])
+                      tmp_df<-table(data.frame(data[i]))
+                      assign(tmp_name,
+                             barplot(tmp_df,main = paste(tmp_name," log-log"), 
+                                     xlab = "degree",ylab = "number of vertices",
+                                     log = "xy"))}
+
+par(mfrow=c(1,2))            
+histos<-lapply(1:length(data),fun_hist)
+```
+
+The four probability distributions tested with maximum likelihood were:
+
+1. Displaced Poisson (lambda)
+2. Displaced Geometric (q)
+3. Zeta (gamma)
+4. Right-Truncated Zeta (gamma, kmax)
+
+The table 1, shows the parameters obtained per model and language.
+
+
+```{r,warning=FALSE, message=FALSE,include=FALSE}
+
+options(scipen = 1, digits = 3)
+df <- data.frame(cbind(
+unlist(names(data)),
+table1$`lambda estimated`,
+table2$`q estimated`,
+table4$`gamma estimated`,
+table5$`gamma estimated`,
+table5$`K max`))
+df[,2:6]<-sapply(df[,2:6],as.double)
+colnames(df)<-c("Language","Lambda","q ","Gamma_1","Gamma_2",
+                    "K max")
+```
+
+```{r,warning=FALSE, message=FALSE,echo=FALSE, results='asis'}
+knitr::kable(df,
+      align = "lccccc",
+      caption = "Parameters per model") %>%
+  add_header_above(c(" ","1","2","3","4","4")) %>%
+  add_header_above(c(" ", Model= 5)) %>%
+kable_styling(latex_options = "striped",full_width = F)
+```
+
+
+
+# Discussion
+
+For all languages tested, the best model (with the lowest AIC score) was the the Zeta Distribution with the parameter gamma fixed at 2. When estimating the Zeta Distribution parameter using maximum likelihood, the optimal gamma ranged from 1.80 to 2.54 among the different languages. Since the AIC score penalizes model complexity, a better AIC score is expected when the number of free parameters is zero. 
+
+The Right-Truncated Zeta gamma parameters were found to be almost identical to that of the Zeta distribution, and the kmax parameters were equivalent to the maximum node degrees of the languages. If we implemented the optimization correctly, this implies that the maximum likelihood estimator for kmax is equal to the maximum degree. With these data sets, it did not estimate a different gamma parameter from the Zeta Distribution since the probabilities are very low in the long tails of the distributions.
+
+The AIC scores for the three variations of Zeta Distributions were much better than the AIC scores for the null models of the Displaced Poisson and Displaced Geometric distributions, implying that the difference in fit is significant.
+
+
+Looking at the Altmann function plots, we can visually see that the curve fits much better to the data than the Zeta Family. We conclude that the Altmann probability distribution provides the best fit of the distributions we tested.
+
+
+```{r AIC, message = FALSE, warning = FALSE, include=FALSE}
+options(scipen = 1, digits = 3)
+kbl(AICs,
+    col.names = c("Language","Displaced Poisson","Displaced geometric",
+                    "Zeta with $\\gamma = 2$","Zeta","Right-trucanted zeta"),
+      align = "lccccc",
+      escape = F, caption = "AIC per model") %>%
+  add_header_above(c(" ","1","2","3","4","5")) %>%
+  add_header_above(c(" ", Model= 5)) %>%
+  kable_styling(latex_options = "striped",full_width = F)
+```
+
+```{r deltas, message = FALSE, warning = FALSE, echo=FALSE}
+# Correction to Delta Function
+deltas<-as.data.frame(AICs[2:6] - do.call(pmin, AICs[2:6]))
+deltas$Languages<-unlist(names(data))
+colnames(deltas)<-c("Language","d1","d2","d3","d4","d5")
+deltas<-deltas[,c(6,1:5)]
+```
+
+
+```{r deltask,warning=FALSE, warning=FALSE, echo=FALSE}
+options(scipen = 1, digits = 3)
+kable(deltas,
+      col.names = c("Language","$\\Delta_1$","$\\Delta_2$ ","$\\Delta_3$","$\\Delta_4$","$\\Delta_5$"),
+      align = "lccccc",
+      escape = F, caption = paste("AIC Differences,", " Best Model: Zeta with $\\gamma = 2$")) %>%
+  add_header_above(c(" ","1","2","3","4","5")) %>%
+  add_header_above(c(" ", ModelAIC= 5)) %>%
+  kable_styling(latex_options = "striped",full_width = F)
+```
+
+Plots of best model for each language are presented:
+
+```{r,message=FALSE, warning=FALSE,results='hide',echo=FALSE}
+# Plotting the best model for each language
+best<-function(x){tmp_x <-data[[x]]$V1
+                  tmp_best <-dzeta(1:max(tmp_x), shape = 2)
+                  tmp_name <- names(data)[x]
+                  plot(tmp_best,type="l", 
+                     main=paste(c(tmp_name," & Zeta(gamma=2)")), col="blue",
+                     xlab="In-Degree (log scale)", ylab="Density", 
+                     lty=6, lwd=3, ylim=c(0,1), xlim=c(1,max(tmp_x)), log="x")
+                  lines(density(tmp_x, from=1, to=max(tmp_x)), col="orange",
+                        lty=3, lwd=3)
+                  legend("topright", legend=c("Zeta(gamma = 2)", tmp_name),
+                       lwd=3, col=c("blue", "orange"), lty=c(6,3))
+                  
+}
+par(mfrow=c(1,2))   
+lapply(1:length(data),best)
+```
+
+
+
+# Methods
+
+We followed the provided instructions for calculating the parameters by maximum likelihood using R. The most important details were setting the starting values and lower and upper bounds for the parameters of each distribution. Particularly with the Right-Truncated Zeta Distribution, the lower bound for the k_max parameter had to be set to the maximum degree value observed in the data minus .00001 in order for the mle optimization function to successfully run.
+
+We tested the optimization functions on all of the sample data sets provided for the Zeta and Geometric distributions and achieved estimates close to the true parameter. In order to test the Displaced Poisson function, we generated our own samples using the R function `rpois` with different levels of lambda, and then removed the zero values.
+
+We were not able to successfully fit model parameters to the Menzereth-Altmann distribution using the same method of maximum likelihood, so we used an R package that is still under development called 'menzereth' [Sellis, https://sellisd.github.io/menzerath/]. The installation process required working through some errors, and it was successfully installed by omitting the option to build vignettes. The package provides a function to fit the model, calculating the best parameters, and also a plot function. The data must be in a frequency table format, unlike the maximum likelihood estimation where the full vectors of node degree could be used. We did not calculate AIC for the Menzereth-Altmann models because the Log-Likelihood function was not available in the object.
+
+
+```{r altmann parametrs, include=FALSE, warning=FALSE, message=FALSE}
+# 6.Altmann function
+fun_alt_par<-function(x){tmp_x <-data[[x]]$V1
+                     frequencies <- freq(tmp_x)
+                     menz_data <- menzerath(tb = frequencies, x = "item",
+                                            y = "count")
+                     # calling the function that fits the model
+                     fit_menzerath <- fit(menz_data)
+                     pa<-get_parameters(fit_menzerath)
+                     paste(names(data)[x],"c=",round(pa$a,5),"gamma=",round(-pa$b,5),"delta=",round(-pa$c,5))}
+Alt_Par<-lapply(1:length(data),fun_alt_par)
+
+#al<-a[[1]]
+#tmp_x <-data[[1]]$V1
+#frequencies <- freq(tmp_x)
+#menz_data <- menzerath(tb = frequencies, x = "item", y = "count")
+#menz_data
+
+```
+
+
+
+```{r altmann plots, message = FALSE, warning = FALSE,include = FALSE}
+fun_altPlot<-function(x){tmp_x <-data[[x]]$V1
+                     frequencies <- freq(tmp_x)
+                     menz_data <- menzerath(tb = frequencies, x = "item",
+                                            y = "count")
+                     # calling the function that fits the model
+                     fit_menzerath <- fit(menz_data)
+                     # printing summary of model
+                     #print(fit_menzerath)
+                     ## printing parameters of model
+                     #get_parameters(fit_menzerath)
+                     ## attempting to get AIC of this model, but am not sure if it compares correctly to AIC from MLE models
+                     ##AIC(fit_menzerath, k=3)
+                     ##paste(names(data)[x],extractAIC(fit_menzerath))
+                     #plot.new()
+                     plot(menz_data, fit=TRUE)}
+                     #title(main="This should be the title of this figure.")}
+Alt_Plot<-lapply(1:length(data),fun_altPlot)
+Alt_Plot
+
+```
+
+
+Next plots present Altmann-Menzereth Distribution Fit with corresponding parameters.
+
+```{r , message = FALSE, warning = FALSE,fig.height=3, echo= FALSE}
+par(mfrow=c(1,2))  
+for(i in 1:10){
+                #plot.new()
+                print(Alt_Par[[i]])
+                print(Alt_Plot[[i]])
+
+}
+```
+
+```{r, message = FALSE, warning = FALSE, echo= FALSE}
+# Altmann 
+
+# I'm not confident that the code I wrote below is correct, so I used a different package to fit model. 
+# Perhaps the minus_log_likelihood is wrong.
+# 
+# # 6. The minus log-likelihood function for Altmann function is defined with 3 free parameters
+# # defining the function to calcuate c
+# 
+# minus_log_likelihood_altmann <- function(gamma, delta, c) {
+#      sum(delta*x) + gamma*(sum(log(x))) - length(x)*log(c)
+# }
+# # 6. To estimate the parameter of Altmann distribution
+# mle_altmann <- mle(minus_log_likelihood_altmann,
+#                   start = list(delta = .01, gamma = 2, c = .001), 
+#                   method = "L-BFGS-B",
+#                   lower = list(gamma = 1.0000001, delta=.000001, c=.000001)) 
+# 
+# summary(mle_altmann)
+# # 6. parameters giving the best fit for Altmann
+# attributes(summary(mle_altmann))$coef[1]
+# attributes(summary(mle_altmann))$coef[2]
+# attributes(summary(mle_altmann))$coef[3]
+# 
+# # 6. AIC Altmann
+# get_AIC(attributes(summary(mle_altmann))$m2logL, 3, N) # K = 3 for Altmann
+
+```
+
+
