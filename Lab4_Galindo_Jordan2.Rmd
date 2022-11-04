@@ -1,0 +1,201 @@
+---
+title: "lab4_script"
+output: html_document
+date: '2022-11-01'
+---
+
+```{r}
+library(stringr)
+```
+
+
+## 2. DATA PREPARATION
+
+# function to write Table 1, summary of the data
+```{r}
+write_summary <- function(source) {
+  
+  for (i in 1:length(source)) {
+    
+    language <- word(source[i], 1, sep = fixed("_")) # = ./data/language
+    language <- word(language,  3, sep = fixed("/")) # = language
+    
+    # get data from source[i]
+    treeMetrics <- read.table(source[i], header = FALSE)
+    
+    N     <- nrow(treeMetrics)
+    meanN <- mean(treeMetrics$V1)
+    stdN  <-   sd(treeMetrics$V1)
+    
+    # V3 metric is the mean edge length
+    meanMetric <- mean(treeMetrics$V3)
+    stdMetric  <-   sd(treeMetrics$V3)
+    
+    data <- cat(language, N, meanN, stdN, meanMetric, stdMetric, "\n")
+    table(data)
+  }
+}
+```
+
+# write the summary
+```{r}
+path <- './data'
+
+# list of names of the data files
+source <- paste(path, list.files(path=path), sep = "/")
+
+write_summary(source)
+```
+
+
+## 3. DATA ANALYSIS
+
+```{r}
+# order trees in data by number of nodes
+Catalan = read.table("./data/Catalan_dependency_tree_metrics.txt", header = FALSE)
+colnames(Catalan) = c("vertices","degree_2nd_moment", "mean_length")
+Catalan = Catalan[order(Catalan$vertices), ]
+
+# preliminary plot
+plot(Catalan$vertices, Catalan$mean_length, 
+     xlab="vertices", ylab="mean dependency length")
+
+# log plot
+plot(log(Catalan$vertices), log(Catalan$mean_length), 
+     xlab="log(vertices)", ylab="log(mean dependency length)")
+
+
+
+
+## log plot suggests power-law dependency
+## to see this clearer we average the mean lengths for every number of vertices
+
+
+
+# aggregated and log of aggregated plots
+mean_Catalan = aggregate(Catalan, list(Catalan$vertices), mean)
+
+plot(mean_Catalan$vertices, mean_Catalan$mean_length,
+     xlab="vertices", ylab="mean mean dependency length")
+
+plot(log(mean_Catalan$vertices), log(mean_Catalan$mean_length),
+     xlab="log(vertices)", ylab="log(mean mean dependency length)")
+
+
+
+
+## the log of aggregated means is clearly linear!
+## we now compare:
+## the log plot of the data,
+## the log of the aggregated plot (green) and
+## the expected mean length obtained from random linear arrangement (red)
+
+plot(log(Catalan$vertices), log(Catalan$mean_length),
+     xlab = "vertices", ylab = "mean dependency length")
+
+lines(log(mean_Catalan$vertices),log(mean_Catalan$mean_length), col = "green")
+lines(log(mean_Catalan$vertices),log((mean_Catalan$vertices+1)/3), col = "red")
+
+
+
+
+```
+
+```{r}
+# null model
+null_model <- function(n){
+  n/3 + 1/3
+}
+
+
+# ensemble of models
+models <- c()
+
+# model 1
+append(models, function(b){
+  (n/2)^b
+})
+
+# model 2
+append(models, function(a, b){
+  a*n^b
+})
+
+# model 3
+append(models, function(a, b, c){
+  a*exp(c*n)
+})
+
+# model 4
+append(models, function(a){
+  a*log(n)
+})
+
+
+# generalised ensemble of models
+models_plus <- c()
+
+# model 1+
+append(models_plus, function(b, d){
+  (n/2)^b+d
+})
+
+# model 2+
+append(models_plus, function(a, b, d){
+  a*n^b+d
+})
+
+# model 3+
+append(models_plus, function(a, b, c, d){
+  a*exp(c*n)+d
+})
+
+# model 4+
+append(models_plus, function(a, d){
+  a*log(n)+d
+})
+
+```
+
+
+## 4. Non-linear regression
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
