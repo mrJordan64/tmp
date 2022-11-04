@@ -70,8 +70,9 @@ data <- map(filelist,read.table)
 names(data)<-languages
 
 fun_ininumbers<-function(x){c(length(x$V1),
-       max(x$V1),
-       sum(x$V1)/length(x$V1),
+       mean(x$V1),
+       sd(x$V1),
+       /length(x$V1),
        length(x$V1)/sum(x$V1))}
 
 a<-lapply(data,fun_ininumbers)
