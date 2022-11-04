@@ -98,7 +98,6 @@ lines(log(mean_Catalan$vertices),log((mean_Catalan$vertices+1)/3), col = "red")
 
 
 
-
 ```
 
 ```{r}
@@ -155,37 +154,64 @@ append(models_plus, function(a, d){
   a*log(n)+d
 })
 
+
+models[1](3)
+
 ```
 
 
 ## 4. Non-linear regression
 
 ```{r}
+a_initial = 4
+b_initial = 4
+
+nonlinear_model = nls(mean_length~a*vertices^b,data=Catalan,
+start = list(a = a_initial, b = b_initial), trace = TRUE)
+
+```
+
+```{r}
+linear_model = lm(log(mean_length)~log(vertices), Catalan)
+
+a_initial = exp(coef(linear_model)[1])
+b_initial = coef(linear_model)[2]
+
+nonlinear_model = nls(mean_length~a*vertices^b,data=Catalan,
+start = list(a = a_initial, b = b_initial), trace = TRUE)
+```
+
+```{r}
+# preliminary plot
+plot(Catalan$vertices, Catalan$mean_length, 
+     xlab="vertices", ylab="mean dependency length")
 
 ```
 
 ```{r}
 
+var_Catalan = aggregate(Catalan, list(Catalan$vertices), var)
+
+plot(mean_Catalan$vertices, var_Catalan$mean_length,
+     xlab="vertices", ylab="variance of mean dependency length")
+
+plot(Catalan$vertices, Catalan$mean_length,
+     xlab = "vertices", ylab = "mean dependency length")
 ```
 
 ```{r}
-
+bartlett.test(list(Catalan$vertices, Catalan))
 ```
-
 ```{r}
+mean_Catalan = aggregate(Catalan, list(Catalan$vertices), mean)
 
-```
+linear_model = lm(log(mean_length)~log(vertices), Catalan)
 
-```{r}
+a_initial = exp(coef(linear_model)[1])
+b_initial = coef(linear_model)[2]
 
-```
-
-```{r}
-
-```
-
-```{r}
-
+nonlinear_model = nls(mean_length~a*vertices^b,data=Catalan,
+start = list(a = a_initial, b = b_initial), trace = TRUE)
 ```
 
 ```{r}
